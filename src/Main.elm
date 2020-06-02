@@ -9,7 +9,7 @@ import Time
 
 
 main =
-    Browser.element
+    Browser.document
         { init = init
         , view = view
         , update = update
@@ -42,17 +42,19 @@ subscriptions model =
     Time.every 1000 ArrivedAtTime
 
 
-view : State -> Html Event
+view : State -> Browser.Document Event
 view state =
-    [ Html.node "style" [] [ Html.text css ]
-    , Svg.svg
-        [ SA.viewBox "0 0 1000 700"
-        , HA.style "height" "99vh"
-        , HA.style "width" "100vw"
+    { body =
+        [ Html.node "style" [] [ Html.text css ]
+        , Svg.svg
+            [ SA.viewBox "0 0 1000 700"
+            , HA.style "height" "99vh"
+            , HA.style "width" "100vw"
+            ]
+            []
         ]
-        []
-    ]
-        |> Html.div []
+    , title = "Game????"
+    }
 
 
 css : String
