@@ -2,6 +2,9 @@ module Main exposing (Event(..), State, main)
 
 import Browser
 import Html exposing (..)
+import Html.Attributes as HA
+import Svg
+import Svg.Attributes as SA
 import Time
 
 
@@ -41,4 +44,23 @@ subscriptions model =
 
 view : State -> Html Event
 view state =
-    "Hello World!" |> Html.text
+    [ Html.node "style" [] [ Html.text css ]
+    , Svg.svg
+        [ SA.viewBox "0 0 1000 700"
+        , HA.style "height" "99vh"
+        , HA.style "width" "100vw"
+        ]
+        []
+    ]
+        |> Html.div []
+
+
+css : String
+css =
+    """
+body
+{
+    background: #111;
+    margin: 0;
+}
+"""
