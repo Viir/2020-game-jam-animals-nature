@@ -18,16 +18,26 @@ main =
 
 
 type alias State =
-    { time : Time.Posix }
+    { time : Time.Posix
+    , playerLocation : GameWorldLocation
+    }
 
 
 type Event
     = ArrivedAtTime Time.Posix
 
 
+type alias GameWorldLocation =
+    { x : Int, y : Int }
+
+
 init : () -> ( State, Cmd Event )
 init _ =
-    ( State (Time.millisToPosix 0), Cmd.none )
+    ( { time = Time.millisToPosix 0
+      , playerLocation = { x = 130, y = 100 }
+      }
+    , Cmd.none
+    )
 
 
 update : Event -> State -> ( State, Cmd Event )
@@ -51,10 +61,27 @@ view state =
             , HA.style "height" "99vh"
             , HA.style "width" "100vw"
             ]
-            []
+            [ [ viewPlayer ] |> translateSvg state.playerLocation ]
         ]
     , title = "Game????"
     }
+
+
+translateSvg : GameWorldLocation -> List (Svg.Svg e) -> Svg.Svg e
+translateSvg { x, y } =
+    Svg.g [ HA.style "transform" ("translate(" ++ (x |> String.fromInt) ++ "px, " ++ (y |> String.fromInt) ++ "px)") ]
+
+
+viewPlayer : Svg.Svg e
+viewPlayer =
+    Svg.rect
+        [ SA.x "-20"
+        , SA.y "-5"
+        , SA.width "40"
+        , SA.height "10"
+        , HA.style "fill" "firebrick"
+        ]
+        []
 
 
 css : String
