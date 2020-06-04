@@ -1,11 +1,16 @@
 module Main exposing (Event(..), State, main)
 
 import Browser
-import Html exposing (..)
+import Html
 import Html.Attributes as HA
 import Svg
 import Svg.Attributes as SA
 import Time
+
+
+productVersionId : String
+productVersionId =
+    "2020-06-04"
 
 
 main =
@@ -55,13 +60,15 @@ subscriptions model =
 view : State -> Browser.Document Event
 view state =
     { body =
-        [ Html.node "style" [] [ Html.text css ]
+        [ Html.node "style" [] [ Html.text globalStyleInDedicatedElement ]
         , Svg.svg
             [ SA.viewBox "0 0 1000 700"
             , HA.style "height" "99vh"
             , HA.style "width" "100vw"
             ]
-            [ [ viewPlayer ] |> translateSvg state.playerLocation ]
+            [ [ viewPlayer ] |> translateSvg state.playerLocation
+            ]
+        , versionInfoHtml
         ]
     , title = "Game????"
     }
@@ -84,12 +91,40 @@ viewPlayer =
         []
 
 
-css : String
-css =
+rootBackgroundColor : String
+rootBackgroundColor =
+    "#111"
+
+
+rootStyle : List ( String, String )
+rootStyle =
+    [ ( "background-color", rootBackgroundColor )
+    , ( "color", "whitesmoke" )
+    , ( "font-size", "18px" )
+    , ( "font-family", "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" )
+    , ( "margin", "0px" )
+    ]
+
+
+globalStyleInDedicatedElement : String
+globalStyleInDedicatedElement =
+    let
+        rootStyleText =
+            rootStyle
+                |> List.map (\( property, value ) -> property ++ ": " ++ value ++ ";")
+                |> String.join "\n"
+    in
     """
-body
-{
-    background: #111;
-    margin: 0;
-}
+body {
 """
+        ++ rootStyleText
+        ++ """
+}"""
+
+
+versionInfoHtml : Html.Html a
+versionInfoHtml =
+    [ ("version " ++ productVersionId) |> Html.text ]
+        |> Html.div [ HA.style "color" "rgba(233,233,233,0.2)", HA.style "font-size" "70%", HA.style "margin" "4px" ]
+        |> List.singleton
+        |> Html.div [ HA.style "position" "fixed", HA.style "bottom" "0px", HA.style "pointer-events" "none" ]
