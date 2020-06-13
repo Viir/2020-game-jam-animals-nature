@@ -10,9 +10,10 @@ import Time
 
 productVersionId : String
 productVersionId =
-    "2020-06-04"
+    "2020-06-13"
 
 
+main : Program () State Event
 main =
     Browser.document
         { init = init
