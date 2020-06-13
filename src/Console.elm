@@ -10,7 +10,7 @@ import Dict
 import Html
 import Html.Events
 import Html.Events.Extra.Touch as Touch
-import Json.Decode as Decode
+import Json.Decode
 import Point2d exposing (Point2d)
 import Vector2d exposing (Vector2d)
 
@@ -48,13 +48,13 @@ type MouseEventType
     | Other
 
 
-attributesForMouseAndTouchEventsWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute (Maybe MouseEvent))
+attributesForMouseAndTouchEventsWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute MouseEvent)
 attributesForMouseAndTouchEventsWithLocationMapped locationMap =
     setMouseEventAttributeWithLocationMapped locationMap
         ++ touchEventsMappedToMouseEventsWithLocationMapped locationMap
 
 
-setMouseEventAttributeWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute (Maybe MouseEvent))
+setMouseEventAttributeWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute MouseEvent)
 setMouseEventAttributeWithLocationMapped locationMap =
     mouseEventTypeParseDict
         |> Dict.keys
@@ -62,7 +62,11 @@ setMouseEventAttributeWithLocationMapped locationMap =
             (\event ->
                 Html.Events.on event
                     (mouseEventDecoder
-                        |> Decode.map (mouseEventParsedWithLocationFromClient >> Maybe.map (mouseEventWithLocationMapped locationMap))
+                        |> Json.Decode.andThen
+                            (mouseEventParsedWithLocationFromClient
+                                >> Maybe.map (mouseEventWithLocationMapped locationMap >> Json.Decode.succeed)
+                                >> Maybe.withDefault (Json.Decode.fail "Event does not match")
+                            )
                     )
             )
 
@@ -75,23 +79,25 @@ touchEventsMappedToMouseEvents =
     ]
 
 
-touchEventsMappedToMouseEventsWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute (Maybe MouseEvent))
+touchEventsMappedToMouseEventsWithLocationMapped : (Point2d -> Point2d) -> List (Html.Attribute MouseEvent)
 touchEventsMappedToMouseEventsWithLocationMapped locationMap =
     touchEventsMappedToMouseEvents
         |> List.map
             (\( attributeConstructor, mouseEventType ) ->
                 let
                     eventFromCoordinates touchEvent =
-                        touchEvent.changedTouches
-                            |> List.head
-                            |> Maybe.map
-                                (\singleTouch ->
-                                    { button = Left
-                                    , eventType = mouseEventType
-                                    , wheelDelta = Vector2d.zero
-                                    , location = singleTouch.clientPos |> Point2d.fromCoordinates |> locationMap
-                                    }
-                                )
+                        let
+                            clientPos =
+                                touchEvent.changedTouches
+                                    |> List.head
+                                    |> Maybe.map .clientPos
+                                    |> Maybe.withDefault ( 0, 0 )
+                        in
+                        { button = Left
+                        , eventType = mouseEventType
+                        , wheelDelta = Vector2d.zero
+                        , location = clientPos |> Point2d.fromCoordinates |> locationMap
+                        }
                 in
                 attributeConstructor eventFromCoordinates
             )
@@ -127,12 +133,12 @@ mouseEventWithLocationMapped locationMap event =
     { event | location = event.location |> locationMap }
 
 
-mouseEventDecoder : Decode.Decoder MouseEventRaw
+mouseEventDecoder : Json.Decode.Decoder MouseEventRaw
 mouseEventDecoder =
-    Decode.map6 MouseEventRaw
-        (Decode.at [ "type" ] Decode.string)
-        (Decode.at [ "clientX" ] Decode.float)
-        (Decode.at [ "clientY" ] Decode.float)
-        (Decode.at [ "button" ] Decode.int)
-        (Decode.at [ "wheelDeltaX" ] Decode.float |> Decode.maybe)
-        (Decode.at [ "wheelDeltaY" ] Decode.float |> Decode.maybe)
+    Json.Decode.map6 MouseEventRaw
+        (Json.Decode.field "type" Json.Decode.string)
+        (Json.Decode.field "clientX" Json.Decode.float)
+        (Json.Decode.field "clientY" Json.Decode.float)
+        (Json.Decode.field "button" Json.Decode.int)
+        (Json.Decode.field "wheelDeltaX" Json.Decode.float |> Json.Decode.maybe)
+        (Json.Decode.field "wheelDeltaY" Json.Decode.float |> Json.Decode.maybe)

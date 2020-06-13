@@ -43,8 +43,6 @@ type Event
     | ResizedWindow { width : Int, height : Int }
     | UserInputPointInGameWorldViewport GameWorldLocation
     | UserInputMoveMouse GameWorldLocation
-      -- TODO: Use an adapted decoder instead of FailedToDecodeEvent
-    | FailedToDecodeEvent
 
 
 type alias GameWorldLocation =
@@ -89,9 +87,6 @@ update event stateBefore =
             ( { stateBefore | playerInputDestination = Just location }, Cmd.none )
 
         UserInputMoveMouse _ ->
-            ( stateBefore, Cmd.none )
-
-        FailedToDecodeEvent ->
             ( stateBefore, Cmd.none )
 
 
@@ -150,7 +145,7 @@ view state =
         inputElement : Html.Html Event
         inputElement =
             Svg.rect inputElementAttributes []
-                |> Html.map (Maybe.map eventFromMouseEvent >> Maybe.withDefault FailedToDecodeEvent)
+                |> Html.map eventFromMouseEvent
                 -- Fix for Firefox: It appeared that firefox applied the scaling of parent elements to compute the mouse event offset (in contrast to chrome and edge). To accomplish symmetry between firefox and chrome, we apply a transform here to revert scaling transforms between the svg root and here.
                 |> List.singleton
                 |> Visuals.svgGroupTransformedScaleUniform (1 / displayConfig.appViewScale)
