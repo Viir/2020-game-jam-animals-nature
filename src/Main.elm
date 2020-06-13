@@ -70,7 +70,7 @@ init _ =
       }
     , Task.perform
         (\viewport ->
-            ResizedWindow { width = viewport.viewport.width |> round, height = viewport.viewport.height |> round }
+            ResizedWindow { width = viewport.viewport.width |> floor, height = viewport.viewport.height |> floor }
         )
         Browser.Dom.getViewport
     )
