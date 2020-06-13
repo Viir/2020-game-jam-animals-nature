@@ -1,5 +1,6 @@
 module Main exposing (Event(..), State, main)
 
+import Arithmetic
 import Base exposing (Float2, tuple2MapAll)
 import Browser
 import Browser.Dom
@@ -33,19 +34,20 @@ main =
 type alias State =
     { time : Time.Posix
     , windowSize : { width : Int, height : Int }
-    , playerLocation : GameWorldLocation
-    , playerInputDestination : Maybe GameWorldLocation
+    , playerLocation : GameWorldVector
+    , playerVelocity : GameWorldVector
+    , playerInputDestination : Maybe GameWorldVector
     }
 
 
 type Event
     = ArrivedAtTime Time.Posix
     | ResizedWindow { width : Int, height : Int }
-    | UserInputPointInGameWorldViewport GameWorldLocation
-    | UserInputMoveMouse GameWorldLocation
+    | UserInputPointInGameWorldViewport GameWorldVector
+    | UserInputMoveMouse GameWorldVector
 
 
-type alias GameWorldLocation =
+type alias GameWorldVector =
     { x : Int, y : Int }
 
 
@@ -59,11 +61,17 @@ type alias HtmlStyle a =
     List (Html.Attribute a)
 
 
+screenToWorldScale : Int
+screenToWorldScale =
+    100
+
+
 init : () -> ( State, Cmd Event )
 init _ =
     ( { time = Time.millisToPosix 0
       , windowSize = { width = 400, height = 300 }
-      , playerLocation = { x = 130, y = 100 }
+      , playerLocation = { x = 130, y = 100 } |> scaleVector screenToWorldScale
+      , playerVelocity = { x = 0, y = 0 }
       , playerInputDestination = Nothing
       }
     , Task.perform
@@ -78,7 +86,13 @@ update : Event -> State -> ( State, Cmd Event )
 update event stateBefore =
     case event of
         ArrivedAtTime time ->
-            ( { stateBefore | time = time }, Cmd.none )
+            let
+                state =
+                    { stateBefore | time = time }
+                        |> updateGameWorldForPassingTime
+                            (((time |> Time.posixToMillis) - (stateBefore.time |> Time.posixToMillis)) |> min 1000)
+            in
+            ( state, Cmd.none )
 
         ResizedWindow windowSize ->
             ( { stateBefore | windowSize = windowSize }, Cmd.none )
@@ -90,9 +104,55 @@ update event stateBefore =
             ( stateBefore, Cmd.none )
 
 
+updateGameWorldForPassingTime : Int -> State -> State
+updateGameWorldForPassingTime milliseconds stateBefore =
+    let
+        distanceFromPlayerToDestination =
+            case stateBefore.playerInputDestination of
+                Nothing ->
+                    { x = 0, y = 0 }
+
+                Just playerInputDestination ->
+                    subtractVector playerInputDestination stateBefore.playerLocation |> divideVector screenToWorldScale
+
+        distanceLength =
+            distanceFromPlayerToDestination |> lengthFromVector
+
+        distanceScaled =
+            distanceFromPlayerToDestination |> scaleVectorToLength (distanceLength |> min 100)
+
+        acceleration =
+            distanceScaled |> scaleVector 10
+
+        dragBase =
+            1000
+
+        dampFactorMilli =
+            List.range 0 milliseconds
+                |> List.foldl (\_ intermediate -> (intermediate * 997) // 1000) dragBase
+
+        playerVelocity =
+            acceleration
+                |> scaleVector (milliseconds * screenToWorldScale // 500)
+                |> addVector stateBefore.playerVelocity
+                |> scaleVector dampFactorMilli
+                |> divideVector dragBase
+
+        playerLocation =
+            playerVelocity
+                |> scaleVector milliseconds
+                |> divideVector 1000
+                |> addVector stateBefore.playerLocation
+    in
+    { stateBefore
+        | playerVelocity = playerVelocity
+        , playerLocation = playerLocation
+    }
+
+
 subscriptions : State -> Sub Event
 subscriptions model =
-    [ Time.every 1000 ArrivedAtTime
+    [ Browser.Events.onAnimationFrame ArrivedAtTime
     , Browser.Events.onResize (\width height -> ResizedWindow { width = width, height = height })
     ]
         |> Sub.batch
@@ -134,6 +194,7 @@ view state =
                     { x = mouseEvent.location |> Point2d.xCoordinate |> floor
                     , y = mouseEvent.location |> Point2d.yCoordinate |> floor
                     }
+                        |> scaleVector screenToWorldScale
             in
             case mouseEvent.eventType of
                 Console.MouseDown ->
@@ -167,7 +228,7 @@ view state =
             ]
         , versionInfoHtml
         ]
-    , title = "Game????"
+    , title = "Dragonfly Game"
     }
 
 
@@ -219,9 +280,13 @@ appViewContainerStyle =
         |> Visuals.htmlStyleFromList
 
 
-translateSvg : GameWorldLocation -> List (Svg.Svg e) -> Svg.Svg e
+translateSvg : GameWorldVector -> List (Svg.Svg e) -> Svg.Svg e
 translateSvg { x, y } =
-    Svg.g [ HA.style "transform" ("translate(" ++ (x |> String.fromInt) ++ "px, " ++ (y |> String.fromInt) ++ "px)") ]
+    let
+        ( svgX, svgY ) =
+            ( x, y ) |> tuple2MapAll (toFloat >> (*) (1 / (screenToWorldScale |> toFloat)) >> String.fromFloat)
+    in
+    Svg.g [ HA.style "transform" ("translate(" ++ svgX ++ "px, " ++ svgY ++ "px)") ]
 
 
 viewPlayer : Svg.Svg e
@@ -239,8 +304,10 @@ viewPlayer =
 destinationIndicationSvg : Svg.Svg e
 destinationIndicationSvg =
     Svg.circle
-        [ SA.r "10"
-        , HA.style "fill" "orange"
+        [ SA.r "20"
+        , HA.style "stroke" "orange"
+        , HA.style "stroke-width" "3px"
+        , HA.style "opacity" "0.5"
         ]
         []
 
@@ -282,3 +349,39 @@ versionInfoHtml =
         |> Html.div [ HA.style "color" "rgba(233,233,233,0.2)", HA.style "font-size" "70%", HA.style "margin" "4px" ]
         |> List.singleton
         |> Html.div [ HA.style "position" "fixed", HA.style "bottom" "0px", HA.style "pointer-events" "none" ]
+
+
+scaleVector : Int -> GameWorldVector -> GameWorldVector
+scaleVector scale vector =
+    { x = vector.x * scale, y = vector.y * scale }
+
+
+divideVector : Int -> GameWorldVector -> GameWorldVector
+divideVector divisor vector =
+    { x = vector.x // divisor, y = vector.y // divisor }
+
+
+addVector : GameWorldVector -> GameWorldVector -> GameWorldVector
+addVector addend0 addend1 =
+    { x = addend0.x + addend1.x, y = addend0.y + addend1.y }
+
+
+subtractVector : GameWorldVector -> GameWorldVector -> GameWorldVector
+subtractVector minuend subtrahend =
+    { x = minuend.x - subtrahend.x, y = minuend.y - subtrahend.y }
+
+
+lengthFromVector : GameWorldVector -> Int
+lengthFromVector vector =
+    (vector.x * vector.x + vector.y * vector.y) |> Arithmetic.squareRoot |> Maybe.withDefault 0
+
+
+scaleVectorToLength : Int -> GameWorldVector -> GameWorldVector
+scaleVectorToLength length vector =
+    let
+        lengthBefore =
+            lengthFromVector vector
+    in
+    vector
+        |> scaleVector length
+        |> divideVector lengthBefore
