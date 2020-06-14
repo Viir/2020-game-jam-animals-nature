@@ -204,7 +204,7 @@ view state =
             let
                 location =
                     { x = mouseEvent.location |> Point2d.xCoordinate |> floor
-                    , y = mouseEvent.location |> Point2d.yCoordinate |> floor
+                    , y = screenToWorldOffset - (mouseEvent.location |> Point2d.yCoordinate |> floor)
                     }
                         |> scaleVector screenToWorldScale
             in
@@ -229,17 +229,18 @@ view state =
                     Html.text ""
 
                 Just playerInputDestination ->
-                    [ destinationIndicationSvg ] |> translateSvg playerInputDestination
+                    [ destinationIndicationSvg ] |> translateSvgForWorldLocation playerInputDestination
 
         allPreySvg =
-            state.prey |> List.map (\prey -> [ preySvg ] |> translateSvg prey.location)
+            state.prey |> List.map (\prey -> [ preySvg ] |> translateSvgForWorldLocation prey.location)
     in
     { body =
         [ Html.node "style" [] [ Html.text globalStyleInDedicatedElement ]
         , svgContainer
-            [ destinationIndication
+            [ [ pondSvg ] |> translateSvgForWorldLocation { x = 0, y = 0 }
+            , destinationIndication
             , allPreySvg |> Svg.g []
-            , [ playerSvg ] |> translateSvg state.playerLocation
+            , [ playerSvg ] |> translateSvgForWorldLocation state.playerLocation
             , inputElement
             ]
         , versionInfoHtml
@@ -296,13 +297,18 @@ appViewContainerStyle =
         |> Visuals.htmlStyleFromList
 
 
-translateSvg : GameWorldVector -> List (Svg.Svg e) -> Svg.Svg e
-translateSvg { x, y } =
+translateSvgForWorldLocation : GameWorldVector -> List (Svg.Svg e) -> Svg.Svg e
+translateSvgForWorldLocation { x, y } =
     let
         ( svgX, svgY ) =
-            ( x, y ) |> tuple2MapAll (toFloat >> (*) (1 / (screenToWorldScale |> toFloat)) >> String.fromFloat)
+            ( x, screenToWorldOffset * screenToWorldScale - y ) |> tuple2MapAll (toFloat >> (*) (1 / (screenToWorldScale |> toFloat)) >> String.fromFloat)
     in
     Svg.g [ HA.style "transform" ("translate(" ++ svgX ++ "px, " ++ svgY ++ "px)") ]
+
+
+screenToWorldOffset : Int
+screenToWorldOffset =
+    (gameDisplayHeight |> floor) - 100
 
 
 playerSvg : Svg.Svg e
@@ -334,6 +340,18 @@ destinationIndicationSvg =
         , HA.style "stroke" "orange"
         , HA.style "stroke-width" "3px"
         , HA.style "opacity" "0.5"
+        ]
+        []
+
+
+pondSvg : Svg.Svg e
+pondSvg =
+    Svg.rect
+        [ SA.x "-2000"
+        , SA.y "0"
+        , SA.width "4000"
+        , SA.height "1000"
+        , HA.style "fill" "#1F618D"
         ]
         []
 
