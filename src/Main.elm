@@ -18,7 +18,7 @@ import Visuals
 
 productVersionId : String
 productVersionId =
-    "2020-06-13"
+    "2020-06-14"
 
 
 main : Program () State Event
@@ -31,20 +31,27 @@ main =
         }
 
 
+type Event
+    = ArrivedAtTime Time.Posix
+    | ResizedWindow { width : Int, height : Int }
+    | UserInputPointInGameWorldViewport GameWorldVector
+    | UserInputMoveMouse GameWorldVector
+
+
 type alias State =
     { time : Time.Posix
     , windowSize : { width : Int, height : Int }
     , playerLocation : GameWorldVector
     , playerVelocity : GameWorldVector
     , playerInputDestination : Maybe GameWorldVector
+    , prey : List Prey
     }
 
 
-type Event
-    = ArrivedAtTime Time.Posix
-    | ResizedWindow { width : Int, height : Int }
-    | UserInputPointInGameWorldViewport GameWorldVector
-    | UserInputMoveMouse GameWorldVector
+type alias Prey =
+    { location : GameWorldVector
+    , velocity : GameWorldVector
+    }
 
 
 type alias GameWorldVector =
@@ -73,6 +80,11 @@ init _ =
       , playerLocation = { x = 130, y = 100 } |> scaleVector screenToWorldScale
       , playerVelocity = { x = 0, y = 0 }
       , playerInputDestination = Nothing
+      , prey =
+            [ { location = { x = 370, y = 200 } |> scaleVector screenToWorldScale, velocity = { x = 0, y = 0 } }
+            , { location = { x = 600, y = 250 } |> scaleVector screenToWorldScale, velocity = { x = 0, y = 0 } }
+            , { location = { x = 780, y = 180 } |> scaleVector screenToWorldScale, velocity = { x = 0, y = 0 } }
+            ]
       }
     , Task.perform
         (\viewport ->
@@ -218,12 +230,16 @@ view state =
 
                 Just playerInputDestination ->
                     [ destinationIndicationSvg ] |> translateSvg playerInputDestination
+
+        allPreySvg =
+            state.prey |> List.map (\prey -> [ preySvg ] |> translateSvg prey.location)
     in
     { body =
         [ Html.node "style" [] [ Html.text globalStyleInDedicatedElement ]
         , svgContainer
             [ destinationIndication
-            , [ viewPlayer ] |> translateSvg state.playerLocation
+            , allPreySvg |> Svg.g []
+            , [ playerSvg ] |> translateSvg state.playerLocation
             , inputElement
             ]
         , versionInfoHtml
@@ -289,14 +305,24 @@ translateSvg { x, y } =
     Svg.g [ HA.style "transform" ("translate(" ++ svgX ++ "px, " ++ svgY ++ "px)") ]
 
 
-viewPlayer : Svg.Svg e
-viewPlayer =
+playerSvg : Svg.Svg e
+playerSvg =
     Svg.rect
         [ SA.x "-20"
         , SA.y "-5"
         , SA.width "40"
         , SA.height "10"
         , HA.style "fill" "firebrick"
+        ]
+        []
+
+
+preySvg : Svg.Svg e
+preySvg =
+    Svg.circle
+        [ SA.r "6"
+        , HA.style "fill" "whitesmoke"
+        , HA.style "opacity" "0.5"
         ]
         []
 
