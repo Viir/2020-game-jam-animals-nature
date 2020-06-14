@@ -13,6 +13,7 @@ import Svg
 import Svg.Attributes as SA
 import Task
 import Time
+import Vector2d
 import Visuals
 
 
@@ -33,14 +34,14 @@ main =
 
 type Event
     = ArrivedAtTime Time.Posix
-    | ResizedWindow { width : Int, height : Int }
+    | ResizedWindow Size2d
     | UserInputPointInGameWorldViewport GameWorldVector
     | UserInputMoveMouse GameWorldVector
 
 
 type alias State =
     { time : Time.Posix
-    , windowSize : { width : Int, height : Int }
+    , windowSize : Size2d
     , playerLocation : GameWorldVector
     , playerVelocity : GameWorldVector
     , playerInputDestination : Maybe GameWorldVector
@@ -58,10 +59,8 @@ type alias GameWorldVector =
     { x : Int, y : Int }
 
 
-type alias DisplayConfiguration =
-    { appViewScale : Float
-    , offset : Float2
-    }
+type alias Size2d =
+    { width : Int, height : Int }
 
 
 type alias HtmlStyle a =
@@ -170,35 +169,14 @@ subscriptions model =
         |> Sub.batch
 
 
-gameDisplayWidth : Float
-gameDisplayWidth =
-    1000
-
-
-gameDisplayHeight : Float
-gameDisplayHeight =
-    700
+gameSceneSize : Size2d
+gameSceneSize =
+    { width = 1000, height = 700 }
 
 
 view : State -> Browser.Document Event
 view state =
     let
-        availableSize =
-            ( state.windowSize.width |> toFloat, state.windowSize.height |> toFloat )
-
-        ( displayConfig, svgContainer ) =
-            viewScaleAndContainerFromAvailableSize availableSize
-
-        scenarioMouseEventOffsetTransform =
-            identity
-
-        inputElementAttributes =
-            [ Visuals.svgRectAttributesSizeAll
-            , [ SA.fill "transparent" ]
-            , Console.attributesForMouseAndTouchEventsWithLocationMapped scenarioMouseEventOffsetTransform
-            ]
-                |> List.concat
-
         eventFromMouseEvent : Console.MouseEvent -> Event
         eventFromMouseEvent mouseEvent =
             let
@@ -215,14 +193,6 @@ view state =
                 _ ->
                     UserInputMoveMouse location
 
-        inputElement : Html.Html Event
-        inputElement =
-            Svg.rect inputElementAttributes []
-                |> Html.map eventFromMouseEvent
-                -- Fix for Firefox: It appeared that firefox applied the scaling of parent elements to compute the mouse event offset (in contrast to chrome and edge). To accomplish symmetry between firefox and chrome, we apply a transform here to revert scaling transforms between the svg root and here.
-                |> List.singleton
-                |> Visuals.svgGroupTransformedScaleUniform (1 / displayConfig.appViewScale)
-
         destinationIndication =
             case state.playerInputDestination of
                 Nothing ->
@@ -236,43 +206,62 @@ view state =
     in
     { body =
         [ Html.node "style" [] [ Html.text globalStyleInDedicatedElement ]
-        , svgContainer
-            [ [ pondSvg ] |> translateSvgForWorldLocation { x = 0, y = 0 }
+        , [ [ [ pondSvg ] |> translateSvgForWorldLocation { x = 0, y = 0 }
             , destinationIndication
             , allPreySvg |> Svg.g []
             , [ playerSvg ] |> translateSvgForWorldLocation state.playerLocation
-            , inputElement
             ]
+                |> svgListeningForPointerInput
+                    { eventFromMouseEvent = eventFromMouseEvent
+                    , sceneSize = gameSceneSize
+                    , viewportSize = state.windowSize
+                    }
+          ]
+            |> Html.div appViewContainerStyle
         , versionInfoHtml
         ]
     , title = "Dragonfly Game"
     }
 
 
-viewScaleAndContainerFromAvailableSize : Float2 -> ( DisplayConfiguration, List (Html.Html msg) -> Html.Html msg )
-viewScaleAndContainerFromAvailableSize ( displayWidth, displayHeight ) =
+svgListeningForPointerInput :
+    { eventFromMouseEvent : Console.MouseEvent -> event, sceneSize : Size2d, viewportSize : Size2d }
+    -> List (Svg.Svg event)
+    -> Svg.Svg event
+svgListeningForPointerInput { eventFromMouseEvent, sceneSize, viewportSize } svgElements =
     let
         appViewScale =
-            min (displayWidth / gameDisplayWidth) (displayHeight / gameDisplayHeight)
+            min ((viewportSize.width |> toFloat) / (sceneSize.width |> toFloat)) ((viewportSize.height |> toFloat) / (sceneSize.height |> toFloat))
 
         ( widthString, heightString ) =
-            ( displayWidth, displayHeight ) |> tuple2MapAll String.fromFloat
+            ( viewportSize.width, viewportSize.height ) |> tuple2MapAll String.fromInt
 
-        container =
-            Svg.svg
-                ([ SA.width widthString
-                 , SA.height heightString
-                 , SA.viewBox ("0 0 " ++ widthString ++ " " ++ heightString)
-                 ]
-                    ++ viewportStyle
-                )
-                >> List.singleton
-                >> Html.div appViewContainerStyle
+        offset =
+            ( ((viewportSize.width |> toFloat) - (sceneSize.width |> toFloat) * appViewScale) / 2, 0 )
 
-        offsetX =
-            (displayWidth - gameDisplayWidth * appViewScale) / 2
+        scenarioMouseEventOffsetTransform =
+            Point2d.scaleAbout Point2d.origin (1 / appViewScale)
+                >> Point2d.translateBy (offset |> Vector2d.fromComponents |> Vector2d.scaleBy (-1 / appViewScale))
+
+        inputElementAttributes =
+            [ Visuals.svgRectAttributesSizeAll
+            , [ SA.fill "transparent" ]
+            , Console.attributesForMouseAndTouchEventsWithLocationMapped scenarioMouseEventOffsetTransform
+            ]
+                |> List.concat
     in
-    ( { appViewScale = appViewScale, offset = ( offsetX, 0 ) }, container )
+    [ [ svgElements |> Visuals.svgGroupTransformedScaleUniform appViewScale
+      ]
+        |> Visuals.svgGroupWithTranslationAndElements offset
+    , Svg.rect inputElementAttributes [] |> Html.map eventFromMouseEvent
+    ]
+        |> Svg.svg
+            ([ SA.width widthString
+             , SA.height heightString
+             , SA.viewBox ("0 0 " ++ widthString ++ " " ++ heightString)
+             ]
+                ++ viewportStyle
+            )
 
 
 viewportStyle : HtmlStyle a
@@ -308,7 +297,7 @@ translateSvgForWorldLocation { x, y } =
 
 screenToWorldOffset : Int
 screenToWorldOffset =
-    (gameDisplayHeight |> floor) - 100
+    gameSceneSize.height - 100
 
 
 playerSvg : Svg.Svg e
